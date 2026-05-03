@@ -1,7 +1,6 @@
 # SME pipeline dashboard (static build)
 
-This folder is a **Vite + React** build of the SME SAR/mo dashboard so you can host it on **GitHub Pages** or any static file host.
-Yep
+This folder is a **Vite + React** build of the SME SAR/month dashboard so you can host it on **GitHub Pages** or any static file host.
 
 
 ## Local dev

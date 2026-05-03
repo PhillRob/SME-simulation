@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   Button,
   Callout,
@@ -23,6 +24,26 @@ import {
   type CanvasHostTheme,
   type ChartTone,
 } from "./canvas-shim";
+
+/** Orderbook parameter: fixed label height + full-width input for aligned grid layout. */
+function OrderbookParamCell(props: { label: string; children: ReactNode }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        minWidth: 0,
+        height: "100%",
+      }}
+    >
+      <Text size="small" tone="secondary" style={{ minHeight: 44, lineHeight: 1.35 }}>
+        {props.label}
+      </Text>
+      <div style={{ width: "100%" }}>{props.children}</div>
+    </div>
+  );
+}
 
 /** Matches `canvasTypography.small` from the canvas theme (not re-exported on the barrel). */
 const CHART_SMALL_PX = "12px";
@@ -190,16 +211,16 @@ function formatIntGroupedPlaceholderEn(n: number): string {
   return formatNumericInputEnglish(String(Math.round(n)), {});
 }
 
-/** Horizon step label for axes / rows — always `mo0 … moh`, never `M0`. */
-function moOrdinal(step: number): string {
-  return `mo${step}`;
+/** Horizon step label for axes / tables, e.g. `month 0` … `month 24`. */
+function monthOrdinal(step: number): string {
+  return `month ${step}`;
 }
 
 type ExpenditureRow = {
   id: string;
   category: string;
   comment: string;
-  /** Plain number string, SAR / mo */
+  /** Plain number string, SAR / month */
   amount: string;
 };
 
@@ -212,7 +233,7 @@ const DEFAULT_EXPENDITURE_ROWS: ExpenditureRow[] = [
   {
     id: "r-def-1",
     category: "10 staff Germany (FT)",
-    comment: "€4,000 gross + 20% charges → SAR/mo",
+    comment: "€4,000 gross + 20% charges → SAR/month",
     amount: "200000",
   },
   {
@@ -260,7 +281,7 @@ const DEFAULT_EXPENDITURE_ROWS: ExpenditureRow[] = [
   {
     id: "r-def-9",
     category: "Debt repayment",
-    comment: "Cash out SAR/mo",
+    comment: "Cash out SAR/month",
     amount: "100000",
   },
 ];
@@ -278,7 +299,7 @@ type PaymentLegRow = {
   label: string;
   /** Contract share % (digits, e.g. 10 for 10%) */
   pct: string;
-  /** mo after award when payment due (ordinal offset; integer stored as string). */
+  /** Months after award when payment due (ordinal offset; integer stored as string). */
   offsetMonths: string;
 };
 
@@ -286,14 +307,14 @@ function newPaymentLegId(): string {
   return `pl-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-/** Default 10 / 40 / 40 / 10 pattern; completion legs use D and D+1 mo offsets from contract. */
+/** Default 10 / 40 / 40 / 10 pattern; completion legs use D and D+1 month offsets from contract. */
 function cloneDefaultPaymentLegs(contractToCompletionMo: number): PaymentLegRow[] {
   const D = Math.max(0, Math.round(contractToCompletionMo));
   return [
     { id: "pl-def-1", label: "Award", pct: "10", offsetMonths: "0" },
-    { id: "pl-def-2", label: "+1 mo from award", pct: "40", offsetMonths: "1" },
+    { id: "pl-def-2", label: "+1 month from award", pct: "40", offsetMonths: "1" },
     { id: "pl-def-3", label: "At completion", pct: "40", offsetMonths: String(D) },
-    { id: "pl-def-4", label: "+1 mo after completion", pct: "10", offsetMonths: String(D + 1) },
+    { id: "pl-def-4", label: "+1 month after completion", pct: "10", offsetMonths: String(D + 1) },
   ];
 }
 
@@ -373,7 +394,7 @@ function simulateOrderbookCash(args: {
     }
   }
 
-  const categories = Array.from({ length: H + 1 }, (_, m) => moOrdinal(m));
+  const categories = Array.from({ length: H + 1 }, (_, m) => monthOrdinal(m));
   const firstProject = rows[0];
   const firstCashMonth =
     firstProject != null && legs.length > 0
@@ -404,9 +425,9 @@ function simulateOrderbookCash(args: {
 
 /**
  * Cash receipts from incremental pipeline SAR (won / intake) per horizon step, modeled as pipeline
- * notional per mo—not accrual P&L. Each win-mo cohort splits evenly across parallel projects (same notion
+ * notional per month—not accrual P&L. Each win-month cohort splits evenly across parallel projects (same notion
  * as orderbook projects); each project uses the same milestones as orderbook (% of engagement at offsets in
- * mo from award, plus lag).
+ * months from award, plus lag).
  */
 function simulateMonthlyPipelineCash(args: {
   horizonMonths: number;
@@ -444,7 +465,7 @@ function simulateMonthlyPipelineCash(args: {
     cumulative.push(run);
   }
 
-  return { monthly, cumulative, categories: Array.from({ length: H + 1 }, (_, m) => moOrdinal(m)) };
+  return { monthly, cumulative, categories: Array.from({ length: H + 1 }, (_, m) => monthOrdinal(m)) };
 }
 
 /** High-contrast chart palette first, theme colours as fallback (deduped). */
@@ -936,13 +957,13 @@ function AxisBarChart(props: {
 export default function SmePipelineBreakeven() {
   const theme = useHostTheme();
   const [tab, setTab] = useCanvasState<
-    "expenditure" | "pipeline" | "orderbook" | "liquidity"
+    "howto" | "expenditure" | "pipeline" | "orderbook" | "liquidity"
   >("dash-tab", "expenditure");
   const [expenditureRows, setExpenditureRows] = useCanvasState<ExpenditureRow[]>(
     "expenditure-lines",
     cloneDefaultRows(),
   );
-  /** Adds on top of OPEX (SAR/mo): need = OPEX × (1 + this% ÷ 100), e.g. 10 → +10% to OPEX. */
+  /** Adds on top of OPEX (SAR/month): need = OPEX × (1 + this% ÷ 100), e.g. 10 → +10% to OPEX. */
   const [targetProfitOnOpexPct, setTargetProfitOnOpexPct] = useCanvasState(
     "input-target-profit-on-opex-pct",
     "0",
@@ -972,13 +993,13 @@ export default function SmePipelineBreakeven() {
     "liquidity-opening-sar",
     "0",
   );
-  /** Empty = default to Pipeline tab hurdle (M_need ≈ gross pipeline cash target SAR/mo). */
+  /** Empty = default to Pipeline tab hurdle (M_need ≈ gross pipeline cash target SAR/month). */
   const [liquidityPipelineWonSarMo, setLiquidityPipelineWonSarMo] = useCanvasState(
     "liquidity-pipeline-won-sar-mo",
     "",
   );
   /**
-   * Projects per win-mo splitting pipeline SAR/mo (same stagger as orderbook). Persist key still
+   * Projects per win-month splitting pipeline SAR/month (same stagger as orderbook). Persist key still
    * `liquidity-pipeline-streams`; empty ⇒ orderbook project count (n, often 5).
    */
   const [liquidityPipelineProjects, setLiquidityPipelineProjects] = useCanvasState(
@@ -988,7 +1009,7 @@ export default function SmePipelineBreakeven() {
 
   const monthlyTotal = sumExpenditureRows(expenditureRows);
   const targetOpexUpliftPct = parseNum(targetProfitOnOpexPct, 0);
-  /** Pipeline hurdle (SAR/mo): base OPEX plus target profit % on top of OPEX. */
+  /** Pipeline hurdle (SAR/month): base OPEX plus target profit % on top of OPEX. */
   const pipelineMonthlyNeed =
     monthlyTotal * (1 + targetOpexUpliftPct / 100);
 
@@ -1050,9 +1071,9 @@ export default function SmePipelineBreakeven() {
   const winOk = p > 0 && p <= 1;
   const dealOk = V > 0;
 
-  /** Won revenue required per mo = pipeline hurdle M_need (SAR/mo). */
+  /** Won revenue required per month = pipeline hurdle M_need (SAR/month). */
   const requiredWonRevenueMonth = pipelineMonthlyNeed;
-  /** Aggregate bid SAR/mo so expected won revenue p × bids ≥ M_need. */
+  /** Aggregate bid SAR/month so expected won revenue p × bids ≥ M_need. */
   const requiredBidVolumeSarMonth =
     winOk ? pipelineMonthlyNeed / p : Number.POSITIVE_INFINITY;
   const expectedWonRevenuePerSubmittedProposal =
@@ -1081,7 +1102,7 @@ export default function SmePipelineBreakeven() {
 
   const obProjCountParsed = parseNum(obNumProjects, 5);
 
-  /** Pipeline intake notional SAR/mo for the liquidity layer (≠ revenue recognition under IFRS/US GAAP—we model collections from partial billing milestones). */
+  /** Pipeline intake notional SAR/month for the liquidity layer (≠ revenue recognition under IFRS/US GAAP—we model collections from partial billing milestones). */
   const liquidityMonthlyPipelineSar =
     liquidityPipelineWonSarMo.trim() === ""
       ? pipelineMonthlyNeed
@@ -1105,7 +1126,7 @@ export default function SmePipelineBreakeven() {
   const liquidityCombinedCashIn = orderbookSim.monthly.map(
     (obM, idx) => obM + (pipelineLiquiditySim.monthly[idx] ?? 0),
   );
-  /** Cumulative expected receipts: orderbook + pipeline cohort (per mo). */
+  /** Cumulative expected receipts: orderbook + pipeline cohort (per month). */
   const liquidityCumulativeCombinedReceipts = orderbookSim.cumulative.map(
     (cumOb, idx) => cumOb + (pipelineLiquiditySim.cumulative[idx] ?? 0),
   );
@@ -1152,14 +1173,17 @@ export default function SmePipelineBreakeven() {
 
   return (
     <Stack gap={20} style={{ maxWidth: 920 }}>
-      <H1>SME SAR/mo burn vs pipeline — break-even</H1>
+      <H1>SME SAR/month burn vs pipeline — break-even</H1>
       <Text tone="secondary">
-        Expenditure, orderbook, and liquidity inputs persist with the canvas. Pipeline sets M_need (SAR/mo).
+        Expenditure, orderbook, and liquidity inputs persist in this browser. Pipeline sets M_need (SAR/month).
         Liquidity overlays pipeline cash from new wins (same partial payment cadence as the orderbook tab) on top
-        of orderbook cash, then nets SAR/mo burn over the horizon.
+        of orderbook cash, then nets SAR/month burn over the horizon.
       </Text>
 
       <Row gap={8} align="center" wrap>
+        <Pill active={tab === "howto"} onClick={() => setTab("howto")}>
+          How to
+        </Pill>
         <Pill active={tab === "expenditure"} onClick={() => setTab("expenditure")}>
           Expenditure
         </Pill>
@@ -1174,19 +1198,98 @@ export default function SmePipelineBreakeven() {
         </Pill>
       </Row>
 
+      {tab === "howto" && (
+        <Stack gap={16}>
+          <Callout tone="info" title="Using this model">
+            The four working tabs build on each other: set your monthly burn, then the pipeline hurdle, then how
+            existing work pays you over time, then how new wins stack on top for cash timing. Everything you type
+            is stored in this browser (local storage) until you clear site data.
+          </Callout>
+
+          <Card>
+            <CardHeader>1 · Expenditure</CardHeader>
+            <CardBody>
+              <Stack gap={8}>
+                <Text tone="secondary" size="small">
+                  Lists operating cash out in SAR/month (payroll, rent, debt service, etc.). The sum is your
+                  baseline burn and feeds every other tab.
+                </Text>
+                <Text tone="secondary" size="small">
+                  Add or remove lines, edit categories and amounts, use <Text weight="semibold">Reset template</Text>{" "}
+                  to restore the starter rows. Numbers accept thousand separators.
+                </Text>
+              </Stack>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader>2 · Pipeline and proposals</CardHeader>
+            <CardBody>
+              <Stack gap={8}>
+                <Text tone="secondary" size="small">
+                  Turns burn into a pipeline hurdle <Text weight="semibold">M_need</Text>: monthly OPEX plus an
+                  optional target profit on top of OPEX. From win rate and average proposal size{" "}
+                  <Text weight="semibold">V</Text>, you get bid envelope, required won revenue, and proposals per
+                  month.
+                </Text>
+                <Text tone="secondary" size="small">
+                  Use it to answer “what do we need to take to market each month?” at your stated conversion
+                  assumptions. Transparent formulas show the algebra.
+                </Text>
+              </Stack>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader>3 · Orderbook and cash</CardHeader>
+            <CardBody>
+              <Stack gap={8}>
+                <Text tone="secondary" size="small">
+                  Models cash in from work already in the orderbook: total contract value, number of projects,
+                  submission stagger, contract and completion timing, and a payment-leg schedule (% of contract at
+                  offsets in months, plus due-to-cash lag).
+                </Text>
+                <Text tone="secondary" size="small">
+                  Outputs include per-project schedule, monthly and cumulative cash-in charts, and how much value
+                  still falls after the horizon. Align legs to roughly 100% of contract so the schedule is complete.
+                </Text>
+              </Stack>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader>4 · Balance</CardHeader>
+            <CardBody>
+              <Stack gap={8}>
+                <Text tone="secondary" size="small">
+                  Combines orderbook receipts with an additive pipeline layer (same payment-leg pattern as the
+                  orderbook, with configurable SAR/month intake and projects splitting each win-month cohort).
+                  Cash out is the expenditure burn; the chart and table show net flows and running cash balance from
+                  an opening balance at month 0.
+                </Text>
+                <Text tone="secondary" size="small">
+                  Use it for liquidity timing: when cumulative inflows minus burn crosses zero, and how pipeline
+                  assumptions change the path. This is a cash collection view, not IFRS/US GAAP revenue recognition.
+                </Text>
+              </Stack>
+            </CardBody>
+          </Card>
+        </Stack>
+      )}
+
       {tab === "expenditure" && (
         <Stack gap={16}>
           <Grid columns={3} gap={16}>
             <Stat
               value={SAR.format(monthlyTotal)}
-              label="Total cash out (SAR/mo)"
+              label="Total cash out (SAR/month)"
               tone="warning"
             />
             <Stat value={SAR.format(monthlyTotal * 12)} label="Annualized (SAR)" />
             <Stat value="80" label="Headcount (for context)" />
           </Grid>
           <Callout tone="info">
-            Edit any cell below. Amounts are SAR/mo (digits with optional thousand commas). Add or remove
+            Edit any cell below. Amounts are SAR/month (digits with optional thousand commas). Add or remove
             lines; use Reset to restore the original template.
           </Callout>
           <Card>
@@ -1202,7 +1305,7 @@ export default function SmePipelineBreakeven() {
                 </Row>
               }
             >
-              Spend lines (SAR/mo)
+              Spend lines (SAR/month)
             </CardHeader>
             <CardBody style={{ paddingTop: 0 }}>
               <Stack gap={0}>
@@ -1236,7 +1339,7 @@ export default function SmePipelineBreakeven() {
                     weight="semibold"
                     style={{ width: 140, flexShrink: 0, textAlign: "right" }}
                   >
-                    SAR/mo
+                    SAR/month
                   </Text>
                   <span style={{ width: 72, flexShrink: 0 }} />
                 </Row>
@@ -1284,7 +1387,7 @@ export default function SmePipelineBreakeven() {
           <Row gap={8} align="center">
             <Text weight="semibold">Sum</Text>
             <Spacer />
-            <Text weight="semibold">{SAR.format(monthlyTotal)} SAR/mo</Text>
+            <Text weight="semibold">{SAR.format(monthlyTotal)} SAR/month</Text>
           </Row>
         </Stack>
       )}
@@ -1292,10 +1395,10 @@ export default function SmePipelineBreakeven() {
       {tab === "pipeline" && (
         <Stack gap={16}>
           <Grid columns={2} gap={16}>
-            <Stat value={SAR.format(monthlyTotal)} label="OPEX (SAR/mo expenditure sum)" />
+            <Stat value={SAR.format(monthlyTotal)} label="OPEX (SAR/month expenditure sum)" />
             <Stat
               value={SAR.format(pipelineMonthlyNeed)}
-              label="Pipeline need M_need (SAR/mo)"
+              label="Pipeline need M_need (SAR/month)"
               tone="warning"
             />
             <Stat
@@ -1304,12 +1407,12 @@ export default function SmePipelineBreakeven() {
                   ? SAR.format(Math.ceil(requiredBidVolumeSarMonth))
                   : "—"
               }
-              label="Bid value to submit · SAR/mo (at stated win rate %)"
+              label="Bid value to submit · SAR/month (at stated win rate %)"
               tone="info"
             />
             <Stat
               value={SAR.format(Math.round(requiredWonRevenueMonth))}
-              label="Won revenue SAR/mo (= M_need)"
+              label="Won revenue SAR/month (= M_need)"
             />
           </Grid>
 
@@ -1322,7 +1425,7 @@ export default function SmePipelineBreakeven() {
                 <Row gap={16} align="start" wrap>
                   <Stack gap={4} style={{ flex: "1 1 200px", minWidth: 0 }}>
                     <Text size="small" tone="secondary">
-                      Target profit (% stacked on SAR/mo OPEX)
+                      Target profit (% stacked on SAR/month OPEX)
                     </Text>
                     <NumericTextInput
                       allowDecimal
@@ -1361,18 +1464,18 @@ export default function SmePipelineBreakeven() {
           <H2>Transparent formulas</H2>
           <Stack gap={8}>
             <Text>
-              Let <Text weight="semibold">M_opex</Text> = expenditure sum (SAR/mo),{" "}
+              Let <Text weight="semibold">M_opex</Text> = expenditure sum (SAR/month),{" "}
               <Text weight="semibold">t</Text> = target profit on OPEX (% ÷ 100),{" "}
-              <Text weight="semibold">M_need</Text> = M_opex × (1 + t) (SAR/mo),{" "}
+              <Text weight="semibold">M_need</Text> = M_opex × (1 + t) (SAR/month),{" "}
               <Text weight="semibold">V</Text> = average proposal size (SAR/bid),{" "}
               <Text weight="semibold">p</Text> = win rate (win % ÷ 100).
             </Text>
-            <Code>{`M_opex = ${SAR.format(monthlyTotal)} SAR/mo`}</Code>
-            <Code>{`M_need = M_opex × (1 + target_profit_on_opex_% ÷ 100) = ${SAR.format(Math.round(pipelineMonthlyNeed))} SAR/mo`}</Code>
-            <Code>{`Won_revenue_required_per_mo = M_need`}</Code>
+            <Code>{`M_opex = ${SAR.format(monthlyTotal)} SAR/month`}</Code>
+            <Code>{`M_need = M_opex × (1 + target_profit_on_opex_% ÷ 100) = ${SAR.format(Math.round(pipelineMonthlyNeed))} SAR/month`}</Code>
+            <Code>{`Won_revenue_required_per_month = M_need`}</Code>
             <Code>{`p = win_rate_% ÷ 100`}</Code>
-            <Code>{`Bid_value_submit_per_mo = M_need ÷ p`}</Code>
-            <Code>{`Proposals_per_mo = M_need ÷ (p × V)`}</Code>
+            <Code>{`Bid_value_submit_per_month = M_need ÷ p`}</Code>
+            <Code>{`Proposals_per_month = M_need ÷ (p × V)`}</Code>
             <Code>{`Expected_won_revenue_per_submitted_proposal = p × V`}</Code>
           </Stack>
 
@@ -1388,7 +1491,7 @@ export default function SmePipelineBreakeven() {
           <Stack gap={12}>
             {!dealOk ? (
               <Callout tone="info">
-                Add a positive average proposal size to estimate proposals / mo
+                Add a positive average proposal size to estimate proposals / month
                 (= M_need ÷ (p × V)).
               </Callout>
             ) : null}
@@ -1396,22 +1499,22 @@ export default function SmePipelineBreakeven() {
               headers={["Metric", "Value", "Notes"]}
               rows={[
                 [
-                  "OPEX (base) SAR/mo",
+                  "OPEX (base) SAR/month",
                   SAR.format(monthlyTotal),
                   "Sum of expenditure tab",
                 ],
                 [
-                  "Pipeline need M_need (SAR/mo)",
+                  "Pipeline need M_need (SAR/month)",
                   SAR.format(Math.round(pipelineMonthlyNeed)),
                   `OPEX × (1 + ${targetOpexUpliftPct}% ÷ 100)`,
                 ],
                 [
-                  "Won revenue SAR/mo required",
+                  "Won revenue SAR/month required",
                   SAR.format(Math.round(requiredWonRevenueMonth)),
-                  "Equals M_need (full pipeline hurdle treated as SAR/mo won turnover)",
+                  "Equals M_need (full pipeline hurdle treated as SAR/month won turnover)",
                 ],
                 [
-                  "Bid value to submit SAR/mo",
+                  "Bid value to submit SAR/month",
                   winOk && Number.isFinite(requiredBidVolumeSarMonth)
                     ? SAR.format(Math.ceil(requiredBidVolumeSarMonth))
                     : "—",
@@ -1420,14 +1523,14 @@ export default function SmePipelineBreakeven() {
                     : "Needs win rate",
                 ],
                 [
-                  "Submitted proposals per mo",
+                  "Submitted proposals per month",
                   dealOk && winOk && Number.isFinite(proposalsNeededMonth)
                     ? proposalsNeededMonth.toLocaleString("en-SA", {
                         maximumFractionDigits: 1,
                       })
                     : "—",
                   dealOk && winOk
-                    ? `M_need ÷ (p × V); each bid expects p·V won SAR (rate view is SAR/mo)`
+                    ? `M_need ÷ (p × V); each bid expects p·V won SAR (rate view is SAR/month)`
                     : "Needs V and valid win rate",
                 ],
                 [
@@ -1444,8 +1547,8 @@ export default function SmePipelineBreakeven() {
           </Stack>
 
           <Text tone="tertiary" size="small">
-            Won revenue target is pipeline M_need in SAR/mo (no separate profit-share haircut). Bid and
-            proposal counts use win rate against that need. Balance tab still burns raw OPEX SAR/mo only.
+            Won revenue target is pipeline M_need in SAR/month (no separate profit-share haircut). Bid and
+            proposal counts use win rate against that need. Balance tab still burns raw OPEX SAR/month only.
           </Text>
         </Stack>
       )}
@@ -1460,7 +1563,7 @@ export default function SmePipelineBreakeven() {
             />
             <Stat
               value={SAR.format(orderbookSim.cumulative[orderbookSim.cumulative.length - 1] ?? 0)}
-              label={`Cash in mo0–${moOrdinal(orderbookSim.monthly.length - 1)}`}
+              label={`Cash in ${monthOrdinal(0)}–${monthOrdinal(orderbookSim.monthly.length - 1)}`}
               tone="success"
             />
             <Stat
@@ -1476,9 +1579,9 @@ export default function SmePipelineBreakeven() {
 
           <Callout tone="info" title="Timing model">
             Each project has the same value (orderbook ÷ count). Submission ordinal for project k is
-            first submission + k × stagger. Contract = submission + submission-to-contract delay (mo).
-            Partial payments set each leg’s share (% of contract) and offset in mo from the contract award;
-            cash settles due + global “Due → cash lag”. Index mo0 is the first step in the horizon.
+            first submission + k × stagger. Contract = submission + submission-to-contract delay (months).
+            Partial payments set each leg’s share (% of contract) and offset in months from the contract award;
+            cash settles due + global “Due → cash lag”. Index month 0 is the first step in the horizon.
           </Callout>
 
           <Card>
@@ -1486,49 +1589,71 @@ export default function SmePipelineBreakeven() {
               Parameters
             </CardHeader>
             <CardBody>
-              <Row gap={16} align="start" wrap>
-                <Stack gap={4} style={{ flex: "1 1 140px", minWidth: 0 }}>
-                  <Text size="small" tone="secondary">Orderbook</Text>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(168px, 1fr))",
+                  gap: 16,
+                  alignItems: "start",
+                }}
+              >
+                <OrderbookParamCell label="Orderbook">
                   <NumericTextInput
                     value={obOrderbookSar}
                     onChange={setObOrderbookSar}
+                    style={{ width: "100%" }}
                   />
-                </Stack>
-                <Stack gap={4} style={{ flex: "1 1 100px", minWidth: 0 }}>
-                  <Text size="small" tone="secondary">Projects</Text>
-                  <NumericTextInput value={obNumProjects} onChange={setObNumProjects} />
-                </Stack>
-                <Stack gap={4} style={{ flex: "1 1 120px", minWidth: 0 }}>
-                  <Text size="small" tone="secondary">Submission → contract (mo)</Text>
-                  <NumericTextInput value={obSubToContract} onChange={setObSubToContract} />
-                </Stack>
-                <Stack gap={4} style={{ flex: "1 1 120px", minWidth: 0 }}>
-                  <Text size="small" tone="secondary">Contract → completion (mo)</Text>
+                </OrderbookParamCell>
+                <OrderbookParamCell label="Projects">
+                  <NumericTextInput
+                    value={obNumProjects}
+                    onChange={setObNumProjects}
+                    style={{ width: "100%" }}
+                  />
+                </OrderbookParamCell>
+                <OrderbookParamCell label="Submission → contract (months)">
+                  <NumericTextInput
+                    value={obSubToContract}
+                    onChange={setObSubToContract}
+                    style={{ width: "100%" }}
+                  />
+                </OrderbookParamCell>
+                <OrderbookParamCell label="Contract → completion (months)">
                   <NumericTextInput
                     value={obContractToCompletion}
                     onChange={setObContractToCompletion}
+                    style={{ width: "100%" }}
                   />
-                </Stack>
-                <Stack gap={4} style={{ flex: "1 1 120px", minWidth: 0 }}>
-                  <Text size="small" tone="secondary">Due → cash lag (mo)</Text>
-                  <NumericTextInput value={obPayLag} onChange={setObPayLag} />
-                </Stack>
-                <Stack gap={4} style={{ flex: "1 1 120px", minWidth: 0 }}>
-                  <Text size="small" tone="secondary">Stagger submissions (mo)</Text>
-                  <NumericTextInput value={obStagger} onChange={setObStagger} />
-                </Stack>
-                <Stack gap={4} style={{ flex: "1 1 140px", minWidth: 0 }}>
-                  <Text size="small" tone="secondary">First project submission (mo)</Text>
+                </OrderbookParamCell>
+                <OrderbookParamCell label="Due → cash lag (months)">
+                  <NumericTextInput
+                    value={obPayLag}
+                    onChange={setObPayLag}
+                    style={{ width: "100%" }}
+                  />
+                </OrderbookParamCell>
+                <OrderbookParamCell label="Stagger submissions (months)">
+                  <NumericTextInput
+                    value={obStagger}
+                    onChange={setObStagger}
+                    style={{ width: "100%" }}
+                  />
+                </OrderbookParamCell>
+                <OrderbookParamCell label="First project submission (months)">
                   <NumericTextInput
                     value={obFirstSubmission}
                     onChange={setObFirstSubmission}
+                    style={{ width: "100%" }}
                   />
-                </Stack>
-                <Stack gap={4} style={{ flex: "1 1 100px", minWidth: 0 }}>
-                  <Text size="small" tone="secondary">Horizon (mo)</Text>
-                  <NumericTextInput value={obHorizon} onChange={setObHorizon} />
-                </Stack>
-              </Row>
+                </OrderbookParamCell>
+                <OrderbookParamCell label="Horizon (months)">
+                  <NumericTextInput
+                    value={obHorizon}
+                    onChange={setObHorizon}
+                    style={{ width: "100%" }}
+                  />
+                </OrderbookParamCell>
+              </div>
             </CardBody>
           </Card>
 
@@ -1587,7 +1712,7 @@ export default function SmePipelineBreakeven() {
                     weight="semibold"
                     style={{ width: 120, flexShrink: 0, textAlign: "right" }}
                   >
-                    Due +mo from contract
+                    Due (+months from contract)
                   </Text>
                   <Text
                     size="small"
@@ -1595,7 +1720,7 @@ export default function SmePipelineBreakeven() {
                     weight="semibold"
                     style={{ width: 100, flexShrink: 0, textAlign: "right" }}
                   >
-                    Cash (+mo from contract)
+                    Cash (+months from contract)
                   </Text>
                   <span style={{ width: 72, flexShrink: 0 }} />
                 </Row>
@@ -1652,7 +1777,7 @@ export default function SmePipelineBreakeven() {
 
           <H2>Current projects (schedule)</H2>
           <Table
-            headers={["Project", "Submit (mo)", "Contract (mo)", "Complete (mo)", "Value (SAR)"]}
+            headers={["Project", "Submit (month)", "Contract (month)", "Complete (month)", "Value (SAR)"]}
             rows={orderbookSim.rows.map((r) => [
               String(r.projectIndex),
               String(r.submissionMonth),
@@ -1665,13 +1790,13 @@ export default function SmePipelineBreakeven() {
           />
 
           <Stat
-            value={`${orderbookSim.winToFirstCashLag} mo`}
-            label="Lag (mo): project 1 submit → first cash"
+            value={`${orderbookSim.winToFirstCashLag} months`}
+            label="Lag (months): project 1 submit → first cash"
           />
 
           <H2>Payment legs (per project)</H2>
           <Table
-            headers={["Leg", "Share", "Due (mo from contract)", "Cash (mo from contract)"]}
+            headers={["Leg", "Share", "Due (months from contract)", "Cash (months from contract)"]}
             rows={orderbookSim.legs.map((leg) => [
               leg.label,
               `${leg.frac * 100}%`,
@@ -1681,7 +1806,7 @@ export default function SmePipelineBreakeven() {
             columnAlign={["left", "right", "right", "right"]}
           />
 
-          <H2>Cash in by mo</H2>
+          <H2>Cash in by month</H2>
           <AxisBarChart
             key={`ob-in-${chartDataRevision}`}
             categories={orderbookSim.categories}
@@ -1700,22 +1825,22 @@ export default function SmePipelineBreakeven() {
             fill
           />
 
-          <H3>Period detail (first 18 mo)</H3>
+          <H3>Period detail (first 18 months)</H3>
           <Table
-            headers={["mo", "Cash (SAR)", "Cumulative (SAR)"]}
+            headers={["Month", "Cash (SAR)", "Cumulative (SAR)"]}
             rows={orderbookSim.monthly.slice(0, 19).map((v, m) => [
-              moOrdinal(m),
+              monthOrdinal(m),
               SAR.format(v),
               SAR.format(orderbookSim.cumulative[m] ?? 0),
             ])}
             columnAlign={["left", "right", "right"]}
             striped
-            emptyMessage="Extend horizon mo to see rows."
+            emptyMessage="Extend horizon (months) to see rows."
           />
 
           <Code>{`Per project = orderbook / n = ${SAR.format(orderbookSim.perProject)}`}</Code>
           <Text tone="tertiary" size="small">
-            If your workbook’s total win-to-cash lag—e.g. 6 mo—differs from the mo span from project 1
+            If your workbook’s total win-to-cash lag—e.g. 6 months—differs from the month span from project 1
             submission to first cash above, adjust first submission,
             submission→contract, payment legs, or payment lag until it matches your definition
             of “win”.
@@ -1727,9 +1852,9 @@ export default function SmePipelineBreakeven() {
         <Stack gap={16}>
           <Callout tone="info" title="What this tab does">
             Cash in each horizon step sums orderbook receipts (Orderbook tab) plus pipeline receipts (same leg
-            pattern as Orderbook). Cash out is SAR/mo burn. Net is operating cash flow before financing.
-            Indices mo0…moh span the orderbook horizon; closing balance builds from opening balance at mo0 plus
-            each mo&apos;s flows.
+            pattern as Orderbook). Cash out is SAR/month burn. Net is operating cash flow before financing.
+            Indices {monthOrdinal(0)}…{monthOrdinal(liquidityLen - 1)} span the orderbook horizon; closing balance builds from opening balance at {monthOrdinal(0)} plus
+            each month&apos;s flows.
           </Callout>
 
           <Card>
@@ -1739,7 +1864,7 @@ export default function SmePipelineBreakeven() {
             <CardBody>
               <Stack gap={4} style={{ maxWidth: 320 }}>
                 <Text size="small" tone="secondary">
-                  Current cash balance at start of mo0 (negative allowed)
+                  Current cash balance at start of month 0 (negative allowed)
                 </Text>
                 <NumericTextInput
                   allowMinus
@@ -1752,14 +1877,14 @@ export default function SmePipelineBreakeven() {
           </Card>
 
           <Card>
-            <CardHeader trailing={<Text size="small" tone="secondary">SAR/mo</Text>}>
+            <CardHeader trailing={<Text size="small" tone="secondary">SAR/month</Text>}>
               Pipeline (additive on top of orderbook)
             </CardHeader>
             <CardBody>
               <Grid columns={2} gap={16}>
                 <Stack gap={4}>
                   <Text size="small" tone="secondary">
-                    Pipeline SAR/mo—won intake notional; empty ⇒ M_need {SAR.format(pipelineMonthlyNeed)}
+                    Pipeline SAR/month — won intake notional; empty ⇒ M_need {SAR.format(pipelineMonthlyNeed)}
                   </Text>
                   <NumericTextInput
                     value={liquidityPipelineWonSarMo}
@@ -1769,7 +1894,7 @@ export default function SmePipelineBreakeven() {
                 </Stack>
                 <Stack gap={4}>
                   <Text size="small" tone="secondary">
-                    Projects per win-mo cohort split that SAR/mo notional evenly (same stagger as orderbook;
+                    Projects per win-month cohort split that SAR/month notional evenly (same stagger as orderbook;
                     empty ⇒ n = {Math.round(obProjCountParsed)})
                   </Text>
                   <NumericTextInput
@@ -1783,15 +1908,15 @@ export default function SmePipelineBreakeven() {
           </Card>
 
           <Grid columns={3} gap={16}>
-            <Stat value={SAR.format(openingBalance)} label="Opening balance (mo0)" />
+            <Stat value={SAR.format(openingBalance)} label="Opening balance (month 0)" />
             <Stat
               value={SAR.format(monthlyCashOutFixed)}
-              label="Cash out — burn SAR/mo"
+              label="Cash out — burn SAR/month"
               tone="warning"
             />
             <Stat
               value={SAR.format(endingBalance)}
-              label={`Closing balance · end ${moOrdinal(liquidityLen - 1)}`}
+              label={`Closing balance · end ${monthOrdinal(liquidityLen - 1)}`}
               tone={endingBalance < 0 ? "danger" : "success"}
             />
           </Grid>
@@ -1799,7 +1924,7 @@ export default function SmePipelineBreakeven() {
           <Grid columns={3} gap={16}>
             <Stat
               value={SAR.format(liquidityMonthlyPipelineSar)}
-              label="Pipeline SAR/mo (per win-mo cohort)"
+              label="Pipeline SAR/month (per win-month cohort)"
               tone="secondary"
             />
             <Stat
@@ -1818,15 +1943,15 @@ export default function SmePipelineBreakeven() {
 
           {firstDeficitMonth >= 0 ? (
             <Stat
-              value={moOrdinal(firstDeficitMonth)}
-              label="First mo-end closing below zero"
+              value={monthOrdinal(firstDeficitMonth)}
+              label="First month-end closing below zero"
               tone="warning"
             />
           ) : (
-            <Stat value="None" label="First mo-end below zero (in horizon)" tone="success" />
+            <Stat value="None" label="First month-end below zero (in horizon)" tone="success" />
           )}
 
-          <H2>Cash in vs cash out · by mo</H2>
+          <H2>Cash in vs cash out · by month</H2>
           <AxisLineChart
             key={`liq-io-${chartDataRevision}`}
             categories={orderbookSim.categories}
@@ -1889,14 +2014,14 @@ export default function SmePipelineBreakeven() {
             height={260}
           />
 
-          <H3>Period detail (first 19 mo)</H3>
+          <H3>Period detail (first 19 months)</H3>
           <Table
-            headers={["mo", "Orderbook in", "Pipeline in", "In total", "Out", "Net", "Running"]}
+            headers={["Month", "Orderbook in", "Pipeline in", "In total", "Out", "Net", "Running"]}
             rows={orderbookSim.monthly.slice(0, 19).map((obIn, m) => {
               const pIn = pipelineLiquiditySim.monthly[m] ?? 0;
               const tot = liquidityCombinedCashIn[m] ?? 0;
               return [
-                moOrdinal(m),
+                monthOrdinal(m),
                 SAR.format(obIn),
                 SAR.format(pIn),
                 SAR.format(tot),
@@ -1909,7 +2034,7 @@ export default function SmePipelineBreakeven() {
             striped
           />
 
-          <Code>{`cashIn_mo = orderbook_mo + pipeline_mo ;  Balance(end moh) = opening@mo0 + Σ_{j=0..h} ( cashIn_mo_j − burn_SAR_mo )`}</Code>
+          <Code>{`cashIn_month = orderbook_month + pipeline_month ;  Balance(end month h) = opening@month 0 + Σ_{j=0..h} ( cashIn_month_j − burn_SAR_month )`}</Code>
         </Stack>
       )}
     </Stack>
