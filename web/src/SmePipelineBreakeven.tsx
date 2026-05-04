@@ -218,10 +218,16 @@ function monthOrdinal(step: number): string {
 
 type ExpenditureRow = {
   id: string;
-  category: string;
-  comment: string;
-  /** Plain number string, SAR / month */
-  amount: string;
+  /** OPEX line item (free text). */
+  item: string;
+  /** SAR per cost driver unit (stored as numeric string). */
+  unitRateSar: string;
+  /** Cost driver volume per month (stored as numeric string). */
+  costDriverQty: string;
+  /** Legacy fields kept for backward compatibility with previously saved rows. */
+  category?: string;
+  comment?: string;
+  amount?: string;
 };
 
 function newRowId(): string {
@@ -232,62 +238,80 @@ function newRowId(): string {
 const DEFAULT_EXPENDITURE_ROWS: ExpenditureRow[] = [
   {
     id: "r-def-1",
-    category: "10 staff Germany (FT)",
-    comment: "€4,000 gross + 20% charges → SAR/month",
-    amount: "200000",
+    item: "Germany payroll (10 FTE)",
+    unitRateSar: "20000",
+    costDriverQty: "10",
   },
   {
     id: "r-def-2",
-    category: "50 staff @ 40,000 SAR",
-    comment: "Payroll",
-    amount: "2000000",
+    item: "KSA payroll (grade A)",
+    unitRateSar: "40000",
+    costDriverQty: "50",
   },
   {
     id: "r-def-3",
-    category: "GOSI (50 staff)",
-    comment: "25 Saudis @ 14% + 25 expats @ 2% (per your totals)",
-    amount: "7970000",
+    item: "GOSI contributions",
+    unitRateSar: "7970000",
+    costDriverQty: "1",
   },
   {
     id: "r-def-4",
-    category: "20 staff @ 20,000 SAR",
-    comment: "Payroll",
-    amount: "400000",
+    item: "KSA payroll (grade B)",
+    unitRateSar: "20000",
+    costDriverQty: "20",
   },
   {
     id: "r-def-5",
-    category: "GOSI (20 staff)",
-    comment: "10 Saudis + 10 expats (per your totals)",
-    amount: "32000",
+    item: "GOSI + social charges (additional team)",
+    unitRateSar: "32000",
+    costDriverQty: "1",
   },
   {
     id: "r-def-6",
-    category: "Health insurance",
-    comment: "~500 SAR × 70 employees",
-    amount: "35000",
+    item: "Health insurance",
+    unitRateSar: "500",
+    costDriverQty: "70",
   },
   {
     id: "r-def-7",
-    category: "Office costs",
-    comment: "2 offices",
-    amount: "250000",
+    item: "Office lease and facilities",
+    unitRateSar: "125000",
+    costDriverQty: "2",
   },
   {
     id: "r-def-8",
-    category: "Other (supplies, cars)",
-    comment: "Operating",
-    amount: "100000",
+    item: "Operating overhead",
+    unitRateSar: "100000",
+    costDriverQty: "1",
   },
   {
     id: "r-def-9",
-    category: "Debt repayment",
-    comment: "Cash out SAR/month",
-    amount: "100000",
+    item: "Debt service",
+    unitRateSar: "100000",
+    costDriverQty: "1",
   },
 ];
 
+function expenditureUnitRateSar(row: ExpenditureRow): number {
+  if (row.unitRateSar != null) {
+    return parseNum(row.unitRateSar, 0);
+  }
+  return parseNum(row.amount ?? "0", 0);
+}
+
+function expenditureCostDriverQty(row: ExpenditureRow): number {
+  if (row.costDriverQty != null) {
+    return parseNum(row.costDriverQty, 1);
+  }
+  return 1;
+}
+
+function expenditureLineTotalSar(row: ExpenditureRow): number {
+  return expenditureUnitRateSar(row) * expenditureCostDriverQty(row);
+}
+
 function sumExpenditureRows(rows: ExpenditureRow[]): number {
-  return rows.reduce((a, r) => a + parseNum(r.amount, 0), 0);
+  return rows.reduce((a, r) => a + expenditureLineTotalSar(r), 0);
 }
 
 function cloneDefaultRows(): ExpenditureRow[] {
@@ -1024,9 +1048,9 @@ export default function SmePipelineBreakeven() {
       ...rows,
       {
         id: newRowId(),
-        category: "New line",
-        comment: "",
-        amount: "0",
+        item: "New OPEX line",
+        unitRateSar: "0",
+        costDriverQty: "1",
       },
     ]);
   };
@@ -1164,7 +1188,12 @@ export default function SmePipelineBreakeven() {
     targetProfitOnOpexPct,
     avgDealSar,
     winRatePct,
-    expenditureRows.map((r) => `${r.id}:${r.amount}`).join(","),
+    expenditureRows
+      .map(
+        (r) =>
+          `${r.id}:${r.unitRateSar ?? r.amount ?? ""}:${r.costDriverQty ?? "1"}`,
+      )
+      .join(","),
     paymentLegRows.map((r) => `${r.id}:${r.pct}:${r.offsetMonths}:${r.label}`).join(";"),
     liquidityPipelineWonSarMo,
     liquidityPipelineProjects,
@@ -1289,8 +1318,8 @@ export default function SmePipelineBreakeven() {
             <Stat value="80" label="Headcount (for context)" />
           </Grid>
           <Callout tone="info">
-            Edit any cell below. Amounts are SAR/month (digits with optional thousand commas). Add or remove
-            lines; use Reset to restore the original template.
+            Edit any line item below. Monthly OPEX is calculated as unit rate × cost driver volume. Add or
+            remove lines; use Reset to restore the original template.
           </Callout>
           <Card>
             <CardHeader
@@ -1305,7 +1334,7 @@ export default function SmePipelineBreakeven() {
                 </Row>
               }
             >
-              Spend lines (SAR/month)
+              OPEX line build-up (SAR/month)
             </CardHeader>
             <CardBody style={{ paddingTop: 0 }}>
               <Stack gap={0}>
@@ -1321,17 +1350,9 @@ export default function SmePipelineBreakeven() {
                     size="small"
                     tone="secondary"
                     weight="semibold"
-                    style={{ flex: "2 1 160px", minWidth: 0 }}
+                    style={{ flex: "2 1 220px", minWidth: 0 }}
                   >
-                    Category
-                  </Text>
-                  <Text
-                    size="small"
-                    tone="secondary"
-                    weight="semibold"
-                    style={{ flex: "2 1 200px", minWidth: 0 }}
-                  >
-                    Comment
+                    Item
                   </Text>
                   <Text
                     size="small"
@@ -1339,7 +1360,23 @@ export default function SmePipelineBreakeven() {
                     weight="semibold"
                     style={{ width: 140, flexShrink: 0, textAlign: "right" }}
                   >
-                    SAR/month
+                    Unit rate (SAR)
+                  </Text>
+                  <Text
+                    size="small"
+                    tone="secondary"
+                    weight="semibold"
+                    style={{ width: 140, flexShrink: 0, textAlign: "right" }}
+                  >
+                    Cost driver volume
+                  </Text>
+                  <Text
+                    size="small"
+                    tone="secondary"
+                    weight="semibold"
+                    style={{ width: 160, flexShrink: 0, textAlign: "right" }}
+                  >
+                    Line OPEX (SAR/month)
                   </Text>
                   <span style={{ width: 72, flexShrink: 0 }} />
                 </Row>
@@ -1355,23 +1392,32 @@ export default function SmePipelineBreakeven() {
                     }}
                   >
                     <TextInput
-                      value={row.category}
-                      onChange={(v) => patchRow(row.id, { category: v })}
-                      placeholder="Category"
-                      style={{ flex: "2 1 160px", minWidth: 0 }}
-                    />
-                    <TextInput
-                      value={row.comment}
-                      onChange={(v) => patchRow(row.id, { comment: v })}
-                      placeholder="Comment"
-                      style={{ flex: "2 1 200px", minWidth: 0 }}
+                      value={row.item ?? row.category ?? ""}
+                      onChange={(v) => patchRow(row.id, { item: v })}
+                      placeholder="Item"
+                      style={{ flex: "2 1 220px", minWidth: 0 }}
                     />
                     <NumericTextInput
-                      value={row.amount}
-                      onChange={(v) => patchRow(row.id, { amount: v })}
+                      allowDecimal
+                      value={row.unitRateSar ?? row.amount ?? ""}
+                      onChange={(v) => patchRow(row.id, { unitRateSar: v })}
                       placeholder="0"
                       style={{ width: 140, flexShrink: 0 }}
                     />
+                    <NumericTextInput
+                      allowDecimal
+                      value={row.costDriverQty ?? "1"}
+                      onChange={(v) => patchRow(row.id, { costDriverQty: v })}
+                      placeholder="0"
+                      style={{ width: 140, flexShrink: 0 }}
+                    />
+                    <Text
+                      size="small"
+                      tone="secondary"
+                      style={{ width: 160, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
+                    >
+                      {SAR.format(Math.round(expenditureLineTotalSar(row)))}
+                    </Text>
                     <Button
                       variant="ghost"
                       onClick={() => removeExpenditureRow(row.id)}
