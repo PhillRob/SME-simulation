@@ -1227,6 +1227,20 @@ export default function SmePipelineBreakeven() {
         </Pill>
       </Row>
 
+      <Card>
+        <CardHeader trailing={<Text size="small" tone="secondary">months</Text>}>
+          Simulation settings
+        </CardHeader>
+        <CardBody>
+          <Stack gap={4} style={{ maxWidth: 280 }}>
+            <Text size="small" tone="secondary">
+              Simulation time horizon (months)
+            </Text>
+            <NumericTextInput value={obHorizon} onChange={setObHorizon} placeholder="24" />
+          </Stack>
+        </CardBody>
+      </Card>
+
       {tab === "howto" && (
         <Stack gap={16}>
           <Callout tone="info" title="Using this model">
@@ -1871,17 +1885,17 @@ export default function SmePipelineBreakeven() {
             fill
           />
 
-          <H3>Period detail (first 18 months)</H3>
+          <H3>Period detail (full horizon)</H3>
           <Table
             headers={["Month", "Cash (SAR)", "Cumulative (SAR)"]}
-            rows={orderbookSim.monthly.slice(0, 19).map((v, m) => [
-              monthOrdinal(m),
+            rows={orderbookSim.monthly.map((v, m) => [
+              String(m),
               SAR.format(v),
               SAR.format(orderbookSim.cumulative[m] ?? 0),
             ])}
             columnAlign={["left", "right", "right"]}
             striped
-            emptyMessage="Extend horizon (months) to see rows."
+            emptyMessage="No months in horizon."
           />
 
           <Code>{`Per project = orderbook / n = ${SAR.format(orderbookSim.perProject)}`}</Code>
@@ -2060,14 +2074,14 @@ export default function SmePipelineBreakeven() {
             height={260}
           />
 
-          <H3>Period detail (first 19 months)</H3>
+          <H3>Period detail (full horizon)</H3>
           <Table
             headers={["Month", "Orderbook in", "Pipeline in", "In total", "Out", "Net", "Running"]}
-            rows={orderbookSim.monthly.slice(0, 19).map((obIn, m) => {
+            rows={orderbookSim.monthly.map((obIn, m) => {
               const pIn = pipelineLiquiditySim.monthly[m] ?? 0;
               const tot = liquidityCombinedCashIn[m] ?? 0;
               return [
-                monthOrdinal(m),
+                String(m),
                 SAR.format(obIn),
                 SAR.format(pIn),
                 SAR.format(tot),
